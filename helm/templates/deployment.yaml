@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mailing-deployment
+  labels:
+    app: mailing-deployment
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: mailing-pod
+  template:
+    metadata:
+      labels:
+        app: mailing-pod
+    spec:
+      containers:
+        - name: mailing
+          image: mailing:1.0.0
+          resources:
+            limits:
+              cpu: "1"
+              memory: "64Mi"
+            requests:
+              cpu: "0.5"
+              memory: "64Mi"
+          ports:
+            - containerPort: 8080
+              name: http
+    

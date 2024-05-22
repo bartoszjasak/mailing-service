@@ -1,0 +1,34 @@
+apiVersion: skaffold/v4beta10
+kind: Config
+metadata:
+    name: mailing
+build:
+  tagPolicy:
+      inputDigest: {}
+  local:
+      concurrency: 0
+  artifacts:
+    - image: mailing
+      docker:
+        dockerfile: ./Dockerfile
+deploy:
+  helm:
+    releases:
+      - name: helm
+        chartPath: helm
+        setValueTemplates:
+          global.postgresql.auth.password: postgres
+          global.postgresql.auth.username: postgres
+          global.postgresql.auth.database: postgres
+          # global.postgresql.postgresqlDatabase: postgres1
+          # global.postgresql.postgresqlUsername: postgres1 
+          # global.postgresql.postgresqlPassword: postgres1
+portForward:
+  - resourceType: service
+    resourceName: mailing
+    port: 8080
+    localPort: 8080
+  - resourceType: service
+    resourceName: helm-postgresql
+    port: 5432
+    localPort: 5432

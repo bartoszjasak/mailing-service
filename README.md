@@ -1,0 +1,1 @@
+goose postgres "postgres://postgres:postgres@localhost:5434/postgres" up
