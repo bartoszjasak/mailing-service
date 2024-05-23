@@ -27,4 +27,9 @@ spec:
           ports:
             - containerPort: 8080
               name: http
+          envFrom:
+            - configMapRef:
+                name: mailing-config
+            - secretRef:
+                name: mailing-secrets
     

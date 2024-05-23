@@ -34,7 +34,8 @@ func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) er
 }
 
 const deleteByID = `-- name: DeleteByID :exec
-DELETE FROM messages WHERE id = $1
+DELETE FROM messages 
+WHERE id = $1
 `
 
 func (q *Queries) DeleteByID(ctx context.Context, id int32) error {
@@ -42,23 +43,14 @@ func (q *Queries) DeleteByID(ctx context.Context, id int32) error {
 	return err
 }
 
-const getByID = `-- name: GetByID :one
-SELECT id, email, title, content, mailing_id, insert_time FROM messages
-WHERE id = $1
+const deleteOlderThan = `-- name: DeleteOlderThan :exec
+DELETE FROM messages 
+WHERE insert_time < $1
 `
 
-func (q *Queries) GetByID(ctx context.Context, id int32) (Message, error) {
-	row := q.db.QueryRowContext(ctx, getByID, id)
-	var i Message
-	err := row.Scan(
-		&i.ID,
-		&i.Email,
-		&i.Title,
-		&i.Content,
-		&i.MailingID,
-		&i.InsertTime,
-	)
-	return i, err
+func (q *Queries) DeleteOlderThan(ctx context.Context, insertTime time.Time) error {
+	_, err := q.db.ExecContext(ctx, deleteOlderThan, insertTime)
+	return err
 }
 
 const getByMailingID = `-- name: GetByMailingID :many

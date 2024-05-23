@@ -1,98 +1,90 @@
 package service
 
 import (
-	"database/sql"
-	"encoding/json"
+	"context"
 	"log"
-	sqlc "main/db/sqlc/generated"
-	"net/http"
-	"strconv"
-	"time"
+	"sync"
 
-	"github.com/go-chi/chi/v5"
+	sqlc "github.com/bartoszjasak/db/sqlc/generated"
+
+	"time"
 )
 
 type Service struct {
-	DB *sqlc.Queries
+	db DB
 }
 
-func New(db *sql.DB) *Service {
+type DB interface {
+	CreateMessage(ctx context.Context, arg sqlc.CreateMessageParams) error
+	DeleteByID(ctx context.Context, id int32) error
+	DeleteOlderThan(ctx context.Context, insertTime time.Time) error
+	GetByMailingID(ctx context.Context, mailingID int32) ([]sqlc.Message, error)
+}
+
+func New(db DB) *Service {
 	return &Service{
-		DB: sqlc.New(db),
+		db: db,
 	}
 }
 
-type newMessage struct {
-	Email      string    `json:"email"`
-	Title      string    `json:"title"`
-	Content    string    `json:"content"`
-	MailingID  int       `json:"mailing_id"`
-	InsertTime time.Time `json:"inser_time"`
-}
-
-func (s *Service) PostMessage(w http.ResponseWriter, r *http.Request) {
-	var newMessage newMessage
-
-	err := json.NewDecoder(r.Body).Decode(&newMessage)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	if err := s.DB.CreateMessage(r.Context(), sqlc.CreateMessageParams{
-		Email:      newMessage.Email,
-		Title:      newMessage.Title,
-		Content:    newMessage.Content,
-		MailingID:  int32(newMessage.MailingID),
-		InsertTime: newMessage.InsertTime,
+func (s *Service) CreateMessage(ctx context.Context, m Message) error {
+	if err := s.db.CreateMessage(ctx, sqlc.CreateMessageParams{
+		Email:      m.Email,
+		Title:      m.Title,
+		Content:    m.Content,
+		MailingID:  int32(m.MailingID),
+		InsertTime: m.InsertTime,
 	}); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return err
 	}
 
-	w.WriteHeader(http.StatusOK)
+	return nil
 }
 
 type sendMessage struct {
 	MailingID int `json:"mailing_id"`
 }
 
-func (s *Service) SendMessages(w http.ResponseWriter, r *http.Request) {
-	var sendMessage sendMessage
-
-	err := json.NewDecoder(r.Body).Decode(&sendMessage)
+func (s *Service) SendMessages(ctx context.Context, mailingID int) error {
+	mails, err := s.db.GetByMailingID(ctx, int32(mailingID))
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	mails, err := s.DB.GetByMailingID(r.Context(), int32(sendMessage.MailingID))
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return err
 	}
 
 	for _, mail := range mails {
-		log.Println("Sending mail to: " + mail.Email)
-		s.DB.DeleteByID(r.Context(), mail.ID)
+		log.Println("Sending mail to " + mail.Email +
+			", Title: \"" + mail.Title +
+			"\", Content: \"" + mail.Content +
+			"\"")
+		s.db.DeleteByID(ctx, mail.ID)
 	}
 
-	w.WriteHeader(http.StatusOK)
+	return nil
 }
 
-func (s *Service) DeleteMessage(w http.ResponseWriter, r *http.Request) {
-	pathParam := chi.URLParam(r, "id")
+func (s *Service) DeleteMessage(ctx context.Context, id int) error {
+	return s.db.DeleteByID(ctx, int32(id))
+}
 
-	id, err := strconv.Atoi(pathParam)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-	}
+func (s *Service) DeleteOlderThan(ctx context.Context, t time.Duration) error {
+	return s.db.DeleteOlderThan(ctx, time.Now().Add(-t))
+}
 
-	err = s.DB.DeleteByID(r.Context(), int32(id))
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
+// StartCleanupJob runs goroutine that periodicly deletes all messages older than 5 minutes
+func (s *Service) StartCleanupJob(wg *sync.WaitGroup, shutdown <-chan struct{}) {
+	wg.Add(1)
+	ticker := time.NewTicker(time.Second * 10)
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				s.DeleteOlderThan(context.Background(), time.Minute*5)
+			case <-shutdown:
+				log.Println("Finished background job")
+				ticker.Stop()
+				wg.Done()
+				return
+			}
+		}
+	}()
 }

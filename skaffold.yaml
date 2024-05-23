@@ -3,10 +3,6 @@ kind: Config
 metadata:
     name: mailing
 build:
-  tagPolicy:
-      inputDigest: {}
-  local:
-      concurrency: 0
   artifacts:
     - image: mailing
       docker:
@@ -14,21 +10,24 @@ build:
 deploy:
   helm:
     releases:
-      - name: helm
+      - name: mailing
         chartPath: helm
         setValueTemplates:
+          config.db.username: postgres
+          config.db.password: postgres
+          config.db.name: postgres
+          config.db.host: mailing-postgresql
+          config.db.port: 5432
+
           global.postgresql.auth.password: postgres
           global.postgresql.auth.username: postgres
           global.postgresql.auth.database: postgres
-          # global.postgresql.postgresqlDatabase: postgres1
-          # global.postgresql.postgresqlUsername: postgres1 
-          # global.postgresql.postgresqlPassword: postgres1
 portForward:
   - resourceType: service
     resourceName: mailing
     port: 8080
     localPort: 8080
   - resourceType: service
-    resourceName: helm-postgresql
+    resourceName: mailing-postgresql
     port: 5432
     localPort: 5432
